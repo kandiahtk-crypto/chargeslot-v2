@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useState } from "react";
 
 type Charger = {
 id: number;
@@ -6,45 +6,10 @@ name: string;
 address: string;
 };
 
-type Screen = "search" | "confirm" | "success";
-
 export default function App() {
 const [city, setCity] = useState("");
 const [chargers, setChargers] = useState<Charger[]>([]);
 const [loading, setLoading] = useState(false);
-
-const [screen, setScreen] = useState<Screen>("search");
-const [selectedCharger, setSelectedCharger] = useState<Charger | null>(null);
-const [selectedDate, setSelectedDate] = useState(
-new Date().toISOString().split("T")[0]
-);
-const [selectedTime, setSelectedTime] = useState("");
-
-const bookingFee = 2.99;
-
-const timeSlots = useMemo(
-() => [
-"09:00",
-"09:30",
-"10:00",
-"10:30",
-"11:00",
-"11:30",
-"12:00",
-"12:30",
-"13:00",
-"13:30",
-"14:00",
-"14:30",
-"15:00",
-"15:30",
-"16:00",
-"16:30",
-"17:00",
-"17:30",
-],
-[]
-);
 
 const searchChargers = async () => {
 if (!city.trim()) {
@@ -56,16 +21,24 @@ setLoading(true);
 
 try {
 const res = await fetch(
-`https://api.openchargemap.io/v3/poi/?output=json&countrycode=GB&maxresults=10&compact=true&verbose=false&location=${encodeURIComponent(
+`https://api.openchargemap.io/v3/poi/?output=json&countrycode=GB&maxresults=10&compact=true&location=${encodeURIComponent(
 city
-)}`
+)}`,
+{
+headers: {
+"X-API-Key": "d22a7ea4-b4c5-4ece-9b31-57c15259a97b",
+},
+}
 );
+
+console.log("Status:", res.status);
 
 if (!res.ok) {
 throw new Error("Failed to fetch chargers");
 }
 
 const data = await res.json();
+console.log("Data:", data);
 
 const cleaned: Charger[] = (data || []).map((item: any, index: number) => ({
 id: item.ID ?? index,
@@ -74,39 +47,17 @@ address: item.AddressInfo?.AddressLine1 || "No address available",
 }));
 
 setChargers(cleaned);
-} catch (error) {
-console.error(error);
+} catch (err) {
+console.error(err);
 alert("Failed to load chargers");
 } finally {
 setLoading(false);
 }
 };
 
-const handleBookNow = (charger: Charger) => {
-setSelectedCharger(charger);
-setSelectedTime("");
-setScreen("confirm");
-};
-
-const confirmBooking = async () => {
-if (!selectedCharger) return;
-
-if (!selectedDate || !selectedTime) {
-alert("Please choose a date and time");
-return;
-}
-
-setScreen("success");
-};
-
-const backToSearch = () => {
-setScreen("search");
-setSelectedCharger(null);
-setSelectedTime("");
-};
-
-const renderSearchScreen = () => (
-<>
+return (
+<div style={styles.page}>
+<div style={styles.shell}>
 <div style={styles.hero}>
 <div style={styles.heroBadge}>Smart EV Booking</div>
 <h1 style={styles.heroTitle}>ChargeSlot ⚡</h1>
@@ -118,7 +69,7 @@ Find EV chargers near you and reserve a slot in seconds.
 <input
 value={city}
 onChange={(e) => setCity(e.target.value)}
-placeholder="Enter city e.g. London"
+placeholder="Enter city e.g. Hillingdon"
 style={styles.searchInput}
 />
 <button onClick={searchChargers} style={styles.searchButton}>
@@ -141,10 +92,11 @@ style={styles.searchInput}
 <div key={charger.id} style={styles.card}>
 <h3 style={styles.cardTitle}>{charger.name}</h3>
 <p style={styles.cardSubtitle}>{charger.address}</p>
-
 <button
-onClick={() => handleBookNow(charger)}
 style={styles.bookNowButton}
+onClick={() =>
+alert(`Booking coming next for ${charger.name}`)
+}
 >
 Book now
 </button>
@@ -152,133 +104,6 @@ Book now
 ))}
 </section>
 )}
-</>
-);
-
-const renderConfirmScreen = () => {
-if (!selectedCharger) return null;
-
-return (
-<div style={styles.confirmWrap}>
-<div style={styles.sectionEyebrow}>Booking</div>
-<h2 style={styles.sectionTitle}>Confirm your reservation</h2>
-
-<div style={styles.card}>
-<h3 style={styles.cardTitle}>{selectedCharger.name}</h3>
-<p style={styles.cardSubtitle}>{selectedCharger.address}</p>
-
-<div style={{ marginTop: 20 }}>
-<div style={styles.slotTitle}>Select date</div>
-<input
-type="date"
-value={selectedDate}
-onChange={(e) => setSelectedDate(e.target.value)}
-style={styles.dateInput}
-/>
-
-<div style={styles.slotTitle}>Select time</div>
-<div style={styles.slotGrid}>
-{timeSlots.map((time) => (
-<button
-key={time}
-onClick={() => setSelectedTime(time)}
-style={{
-...styles.slotButton,
-border:
-selectedTime === time
-? "2px solid #ea7b35"
-: "1px solid #ddd",
-background: selectedTime === time ? "#fff7ed" : "#fff",
-}}
->
-{time}
-</button>
-))}
-</div>
-</div>
-
-<div style={styles.summaryBox}>
-<div style={styles.summaryRow}>
-<span>Reservation fee</span>
-<span>£{bookingFee.toFixed(2)}</span>
-</div>
-<div style={styles.summaryRow}>
-<span>Date</span>
-<span>{selectedDate}</span>
-</div>
-<div style={styles.summaryRow}>
-<span>Time</span>
-<span>{selectedTime || "Not selected"}</span>
-</div>
-<div style={styles.summaryRow}>
-<span>Status</span>
-<span>Pending confirmation</span>
-</div>
-</div>
-
-<div style={styles.actionRow}>
-<button onClick={backToSearch} style={styles.ghostButton}>
-Back
-</button>
-
-<button onClick={confirmBooking} style={styles.bookNowButton}>
-Confirm booking
-</button>
-</div>
-</div>
-</div>
-);
-};
-
-const renderSuccessScreen = () => {
-if (!selectedCharger) return null;
-
-return (
-<div style={styles.confirmWrap}>
-<div style={styles.successCircle}>✓</div>
-<div style={styles.sectionEyebrow}>Success</div>
-<h2 style={styles.sectionTitle}>Booking confirmed</h2>
-<p style={styles.heroText}>
-Your charging reservation has been created successfully.
-</p>
-
-<div style={styles.card}>
-<h3 style={styles.cardTitle}>{selectedCharger.name}</h3>
-<p style={styles.cardSubtitle}>{selectedCharger.address}</p>
-
-<div style={styles.summaryBox}>
-<div style={styles.summaryRow}>
-<span>Reservation fee</span>
-<span>£{bookingFee.toFixed(2)}</span>
-</div>
-<div style={styles.summaryRow}>
-<span>Date</span>
-<span>{selectedDate}</span>
-</div>
-<div style={styles.summaryRow}>
-<span>Time slot</span>
-<span>{selectedTime}</span>
-</div>
-<div style={styles.summaryRow}>
-<span>Status</span>
-<span>Confirmed</span>
-</div>
-</div>
-
-<button onClick={backToSearch} style={styles.bookNowButton}>
-Back to chargers
-</button>
-</div>
-</div>
-);
-};
-
-return (
-<div style={styles.page}>
-<div style={styles.shell}>
-{screen === "search" && renderSearchScreen()}
-{screen === "confirm" && renderConfirmScreen()}
-{screen === "success" && renderSuccessScreen()}
 </div>
 </div>
 );
@@ -419,82 +244,6 @@ fontSize: "18px",
 fontWeight: 800,
 cursor: "pointer",
 },
-confirmWrap: {
-background: "#ffffff",
-borderRadius: "28px",
-padding: "24px",
-boxShadow: "0 18px 40px rgba(15,23,42,0.12)",
-},
-slotTitle: {
-fontWeight: 800,
-marginBottom: "10px",
-color: "#111827",
-fontSize: "16px",
-},
-slotGrid: {
-display: "flex",
-gap: "10px",
-flexWrap: "wrap",
-},
-slotButton: {
-padding: "10px 14px",
-borderRadius: "12px",
-fontWeight: 700,
-background: "#fff",
-cursor: "pointer",
-},
-dateInput: {
-width: "100%",
-padding: "12px 14px",
-borderRadius: "12px",
-border: "1px solid #ddd",
-fontSize: "16px",
-boxSizing: "border-box",
-marginBottom: "14px",
-},
-summaryBox: {
-marginTop: "18px",
-borderTop: "1px solid #e5e7eb",
-paddingTop: "14px",
-},
-summaryRow: {
-display: "flex",
-justifyContent: "space-between",
-gap: "12px",
-padding: "8px 0",
-color: "#334155",
-fontSize: "16px",
-fontWeight: 600,
-},
-actionRow: {
-display: "flex",
-gap: "10px",
-flexWrap: "wrap",
-marginTop: "18px",
-},
-ghostButton: {
-flex: 1,
-minWidth: "150px",
-padding: "14px 16px",
-borderRadius: "16px",
-border: "1px solid #dbe2ea",
-background: "#fff",
-color: "#111827",
-fontWeight: 800,
-cursor: "pointer",
-},
-successCircle: {
-width: "72px",
-height: "72px",
-borderRadius: "999px",
-background: "#16a34a",
-color: "#fff",
-display: "flex",
-alignItems: "center",
-justifyContent: "center",
-fontSize: "34px",
-fontWeight: 900,
-marginBottom: "16px",
-boxShadow: "0 12px 24px rgba(22,163,74,0.22)",
-},
 };
+
+
