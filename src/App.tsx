@@ -1,15 +1,45 @@
 import { useState } from "react";
+import { MapContainer, TileLayer, Marker, Popup } from "react-leaflet";
+import L from "leaflet";
+import "leaflet/dist/leaflet.css";
+
+delete (L.Icon.Default.prototype as any)._getIconUrl;
+L.Icon.Default.mergeOptions({
+iconRetinaUrl:
+"https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png",
+iconUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png",
+shadowUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
+});
+
+type RawCharger = {
+ID?: number;
+AddressInfo?: {
+Title?: string;
+AddressLine1?: string;
+Town?: string;
+Latitude?: number;
+Longitude?: number;
+};
+Connections?: {
+PowerKW?: number;
+}[];
+};
 
 type Charger = {
 id: number;
 name: string;
 address: string;
+lat: number;
+lng: number;
+power: string;
+raw: RawCharger;
 };
 
 export default function App() {
 const [city, setCity] = useState("");
 const [chargers, setChargers] = useState<Charger[]>([]);
 const [loading, setLoading] = useState(false);
+const [mapCenter, setMapCenter] = useState<[number, number]>([51.5074, -0.1278]);
 
 const searchChargers = async () => {
 if (!city.trim()) {
@@ -20,10 +50,9 @@ return;
 setLoading(true);
 
 try {
-// 1. Get coordinates from city name
 const geoRes = await fetch(
 `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(
-city + ", UK"
+`${city}, UK`
 )}`
 );
 
@@ -37,12 +66,13 @@ if (!geoData || geoData.length === 0) {
 throw new Error("City not found");
 }
 
-const lat = geoData[0].lat;
-const lon = geoData[0].lon;
+const lat = Number(geoData[0].lat);
+const lon = Number(geoData[0].lon);
 
-// 2. Search chargers near that location
+setMapCenter([lat, lon]);
+
 const res = await fetch(
-`https://api.openchargemap.io/v3/poi/?output=json&countrycode=GB&maxresults=20&compact=true&verbose=false&latitude=${lat}&longitude=${lon}&distance=15&distanceunit=KM`,
+`https://api.openchargemap.io/v3/poi/?output=json&maxresults=20&compact=true&verbose=false&latitude=${lat}&longitude=${lon}&distance=8&distanceunit=KM`,
 {
 headers: {
 "X-API-Key": "d22a7ea4-b4c5-4ece-9b31-57c15259a97b",
@@ -54,15 +84,27 @@ if (!res.ok) {
 throw new Error("Failed to fetch chargers");
 }
 
-const data = await res.json();
+const data: RawCharger[] = await res.json();
 
-const cleaned: Charger[] = (data || []).map((item: any, index: number) => ({
+const cleaned: Charger[] = (data || [])
+.filter(
+(item) =>
+item.AddressInfo?.Latitude != null &&
+item.AddressInfo?.Longitude != null
+)
+.map((item, index) => ({
 id: item.ID ?? index,
 name: item.AddressInfo?.Title || "EV Charger",
 address:
 item.AddressInfo?.AddressLine1 ||
 item.AddressInfo?.Town ||
 "No address available",
+lat: Number(item.AddressInfo?.Latitude),
+lng: Number(item.AddressInfo?.Longitude),
+power: item.Connections?.[0]?.PowerKW
+? `${item.Connections[0].PowerKW} kW`
+: "Power not listed",
+raw: item,
 }));
 
 setChargers(cleaned);
@@ -76,203 +118,77 @@ setLoading(false);
 };
 
 return (
-<div
-style={{
-minHeight: "100vh",
-background:
-"linear-gradient(180deg, #0b1220 0%, #111827 20%, #eef2f7 20%, #eef2f7 100%)",
-padding: "20px 12px 40px",
-fontFamily:
-'Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
-}}
->
-<div style={{ maxWidth: "560px", margin: "0 auto" }}>
-<div
-style={{
-background:
-"radial-gradient(circle at top, rgba(249,115,22,0.18), transparent 28%), linear-gradient(135deg, #0f172a, #111827 70%)",
-borderRadius: "28px",
-padding: "24px",
-color: "#fff",
-boxShadow: "0 18px 40px rgba(15,23,42,0.28)",
-marginBottom: "20px",
-}}
->
-<div
-style={{
-display: "inline-block",
-padding: "8px 14px",
-borderRadius: "999px",
-border: "1px solid rgba(249,115,22,0.35)",
-background: "rgba(249,115,22,0.08)",
-color: "#fdba74",
-fontSize: "13px",
-fontWeight: 700,
-marginBottom: "16px",
-}}
->
-Smart EV Booking
-</div>
-
-<h1
-style={{
-fontSize: "48px",
-lineHeight: 1,
-margin: "0 0 10px",
-letterSpacing: "-0.04em",
-fontWeight: 800,
-}}
->
-ChargeSlot ⚡
-</h1>
-
-<p
-style={{
-margin: "0 0 20px",
-color: "#cbd5e1",
-fontSize: "17px",
-lineHeight: 1.6,
-}}
->
+<div style={styles.page}>
+<div style={styles.shell}>
+<div style={styles.hero}>
+<div style={styles.heroBadge}>Smart EV Booking</div>
+<h1 style={styles.heroTitle}>ChargeSlot ⚡</h1>
+<p style={styles.heroText}>
 Find EV chargers near you and reserve a slot in seconds.
 </p>
 
-<div style={{ display: "flex", gap: "10px" }}>
+<div style={styles.searchRow}>
 <input
 value={city}
 onChange={(e) => setCity(e.target.value)}
 placeholder="Enter city e.g. London"
-style={{
-flex: 1,
-padding: "14px 16px",
-borderRadius: "16px",
-border: "1px solid rgba(255,255,255,0.12)",
-background: "rgba(255,255,255,0.06)",
-color: "#fff",
-fontSize: "16px",
-outline: "none",
-boxSizing: "border-box",
-}}
+style={styles.searchInput}
 />
-<button
-onClick={searchChargers}
-style={{
-padding: "14px 18px",
-borderRadius: "16px",
-border: "1px solid rgba(255,255,255,0.1)",
-background: "#fff",
-color: "#111827",
-fontWeight: 800,
-cursor: "pointer",
-}}
->
+<button onClick={searchChargers} style={styles.searchButton}>
 {loading ? "Searching..." : "Search"}
 </button>
 </div>
 </div>
 
-{chargers.length > 0 && (
-<section>
-<div
-style={{
-display: "flex",
-justifyContent: "space-between",
-alignItems: "center",
-marginBottom: "14px",
-}}
+<div style={styles.mapWrap}>
+<MapContainer
+center={mapCenter}
+zoom={13}
+style={styles.map as React.CSSProperties}
+key={`${mapCenter[0]}-${mapCenter[1]}`}
 >
+<TileLayer
+attribution='&copy; OpenStreetMap contributors'
+url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+/>
+
+{chargers.map((charger) => (
+<Marker key={charger.id} position={[charger.lat, charger.lng]}>
+<Popup>
 <div>
-<div
-style={{
-fontSize: "13px",
-fontWeight: 700,
-color: "#f97316",
-textTransform: "uppercase",
-letterSpacing: "0.08em",
-}}
->
-Results
+<strong>{charger.name}</strong>
+<br />
+{charger.address}
+<br />
+{charger.power}
 </div>
-<h2
-style={{
-margin: "4px 0 0",
-fontSize: "28px",
-color: "#0f172a",
-fontWeight: 800,
-}}
->
-Available Chargers
-</h2>
+</Popup>
+</Marker>
+))}
+</MapContainer>
 </div>
 
-<div
-style={{
-minWidth: "40px",
-height: "40px",
-borderRadius: "999px",
-background: "#fff7ed",
-color: "#ea580c",
-display: "flex",
-alignItems: "center",
-justifyContent: "center",
-fontWeight: 800,
-fontSize: "14px",
-}}
->
-{chargers.length}
+{chargers.length > 0 && (
+<section>
+<div style={styles.sectionHeader}>
+<div>
+<div style={styles.sectionEyebrow}>Results</div>
+<h2 style={styles.sectionTitle}>Available Chargers</h2>
 </div>
+<div style={styles.resultCount}>{chargers.length}</div>
 </div>
 
 {chargers.map((charger) => (
-<div
-key={charger.id}
-style={{
-background: "#ffffff",
-borderRadius: "24px",
-padding: "18px",
-marginBottom: "14px",
-boxShadow: "0 10px 30px rgba(15,23,42,0.08)",
-border: "1px solid #edf2f7",
-}}
->
-<h3
-style={{
-fontSize: "28px",
-lineHeight: 1.1,
-color: "#0f172a",
-fontWeight: 800,
-marginBottom: "8px",
-letterSpacing: "-0.03em",
-}}
->
-{charger.name}
-</h3>
-
-<p
-style={{
-color: "#64748b",
-fontSize: "17px",
-lineHeight: 1.5,
-marginBottom: "10px",
-}}
->
-{charger.address}
-</p>
+<div key={charger.id} style={styles.card}>
+<h3 style={styles.cardTitle}>{charger.name}</h3>
+<p style={styles.cardSubtitle}>{charger.address}</p>
+<p style={styles.cardMeta}>{charger.power}</p>
 
 <button
-onClick={() => alert(`Booking coming next for ${charger.name}`)}
-style={{
-width: "100%",
-marginTop: "16px",
-padding: "15px 16px",
-borderRadius: "16px",
-border: "none",
-background: "#111827",
-color: "#fff",
-fontSize: "18px",
-fontWeight: 800,
-cursor: "pointer",
-}}
+style={styles.bookNowButton}
+onClick={() =>
+alert(`Booking screen coming next for ${charger.name}`)
+}
 >
 Book now
 </button>
@@ -284,3 +200,160 @@ Book now
 </div>
 );
 }
+
+const styles: Record<string, React.CSSProperties> = {
+page: {
+minHeight: "100vh",
+background:
+"linear-gradient(180deg, #0b1220 0%, #111827 20%, #eef2f7 20%, #eef2f7 100%)",
+padding: "20px 12px 40px",
+fontFamily:
+'Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+},
+shell: {
+maxWidth: "760px",
+margin: "0 auto",
+},
+hero: {
+background:
+"radial-gradient(circle at top, rgba(249,115,22,0.18), transparent 28%), linear-gradient(135deg, #0f172a, #111827 70%)",
+borderRadius: "28px",
+padding: "24px",
+color: "#fff",
+boxShadow: "0 18px 40px rgba(15,23,42,0.28)",
+marginBottom: "20px",
+},
+heroBadge: {
+display: "inline-block",
+padding: "8px 14px",
+borderRadius: "999px",
+border: "1px solid rgba(249,115,22,0.35)",
+background: "rgba(249,115,22,0.08)",
+color: "#fdba74",
+fontSize: "13px",
+fontWeight: 700,
+marginBottom: "16px",
+},
+heroTitle: {
+fontSize: "48px",
+lineHeight: 1,
+margin: "0 0 10px",
+letterSpacing: "-0.04em",
+fontWeight: 800,
+},
+heroText: {
+margin: "0 0 20px",
+color: "#cbd5e1",
+fontSize: "17px",
+lineHeight: 1.6,
+},
+searchRow: {
+display: "flex",
+gap: "10px",
+},
+searchInput: {
+flex: 1,
+padding: "14px 16px",
+borderRadius: "16px",
+border: "1px solid rgba(255,255,255,0.12)",
+background: "rgba(255,255,255,0.06)",
+color: "#fff",
+fontSize: "16px",
+outline: "none",
+boxSizing: "border-box",
+},
+searchButton: {
+padding: "14px 18px",
+borderRadius: "16px",
+border: "1px solid rgba(255,255,255,0.1)",
+background: "#fff",
+color: "#111827",
+fontWeight: 800,
+cursor: "pointer",
+},
+mapWrap: {
+background: "#fff",
+borderRadius: "24px",
+padding: "10px",
+marginBottom: "20px",
+boxShadow: "0 10px 30px rgba(15,23,42,0.08)",
+border: "1px solid #edf2f7",
+},
+map: {
+height: "420px",
+width: "100%",
+borderRadius: "18px",
+},
+sectionHeader: {
+display: "flex",
+justifyContent: "space-between",
+alignItems: "center",
+marginBottom: "14px",
+},
+sectionEyebrow: {
+fontSize: "13px",
+fontWeight: 700,
+color: "#f97316",
+textTransform: "uppercase",
+letterSpacing: "0.08em",
+},
+sectionTitle: {
+margin: "4px 0 0",
+fontSize: "28px",
+color: "#0f172a",
+fontWeight: 800,
+},
+resultCount: {
+minWidth: "40px",
+height: "40px",
+borderRadius: "999px",
+background: "#fff7ed",
+color: "#ea580c",
+display: "flex",
+alignItems: "center",
+justifyContent: "center",
+fontWeight: 800,
+fontSize: "14px",
+},
+card: {
+background: "#ffffff",
+borderRadius: "24px",
+padding: "18px",
+marginBottom: "14px",
+boxShadow: "0 10px 30px rgba(15,23,42,0.08)",
+border: "1px solid #edf2f7",
+},
+cardTitle: {
+fontSize: "28px",
+lineHeight: 1.1,
+color: "#0f172a",
+fontWeight: 800,
+marginBottom: "8px",
+letterSpacing: "-0.03em",
+},
+cardSubtitle: {
+color: "#64748b",
+fontSize: "17px",
+lineHeight: 1.5,
+marginBottom: "8px",
+},
+cardMeta: {
+color: "#f97316",
+fontWeight: 700,
+marginBottom: "10px",
+},
+bookNowButton: {
+width: "100%",
+marginTop: "16px",
+padding: "15px 16px",
+borderRadius: "16px",
+border: "none",
+background: "#111827",
+color: "#fff",
+fontSize: "18px",
+fontWeight: 800,
+cursor: "pointer",
+},
+};
+
+
