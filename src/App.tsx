@@ -1,15 +1,11 @@
 import { useState } from "react";
-import { MapContainer, TileLayer, Marker, Popup } from "react-leaflet";
-import L from "leaflet";
+import {
+MapContainer,
+TileLayer,
+Popup,
+CircleMarker,
+} from "react-leaflet";
 import "leaflet/dist/leaflet.css";
-
-delete (L.Icon.Default.prototype as any)._getIconUrl;
-L.Icon.Default.mergeOptions({
-iconRetinaUrl:
-"https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png",
-iconUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png",
-shadowUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
-});
 
 type RawCharger = {
 ID?: number;
@@ -32,7 +28,6 @@ address: string;
 lat: number;
 lng: number;
 power: string;
-raw: RawCharger;
 };
 
 export default function App() {
@@ -51,7 +46,7 @@ setLoading(true);
 
 try {
 const geoRes = await fetch(
-`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(
+`https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(
 `${city}, UK`
 )}`
 );
@@ -104,7 +99,6 @@ lng: Number(item.AddressInfo?.Longitude),
 power: item.Connections?.[0]?.PowerKW
 ? `${item.Connections[0].PowerKW} kW`
 : "Power not listed",
-raw: item,
 }));
 
 setChargers(cleaned);
@@ -144,7 +138,7 @@ style={styles.searchInput}
 <MapContainer
 center={mapCenter}
 zoom={13}
-style={styles.map as React.CSSProperties}
+style={styles.map}
 key={`${mapCenter[0]}-${mapCenter[1]}`}
 >
 <TileLayer
@@ -153,7 +147,16 @@ url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
 />
 
 {chargers.map((charger) => (
-<Marker key={charger.id} position={[charger.lat, charger.lng]}>
+<CircleMarker
+key={charger.id}
+center={[charger.lat, charger.lng]}
+radius={8}
+pathOptions={{
+color: "#ea580c",
+fillColor: "#f97316",
+fillOpacity: 0.85,
+}}
+>
 <Popup>
 <div>
 <strong>{charger.name}</strong>
@@ -163,7 +166,7 @@ url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
 {charger.power}
 </div>
 </Popup>
-</Marker>
+</CircleMarker>
 ))}
 </MapContainer>
 </div>
@@ -272,7 +275,7 @@ fontWeight: 800,
 cursor: "pointer",
 },
 mapWrap: {
-background: "#fff",
+background: "#ffffff",
 borderRadius: "24px",
 padding: "10px",
 marginBottom: "20px",
@@ -355,5 +358,4 @@ fontWeight: 800,
 cursor: "pointer",
 },
 };
-
 
